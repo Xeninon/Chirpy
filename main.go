@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
+	"strings"
 	"sync/atomic"
 )
 
@@ -15,8 +18,9 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/app/", cfg.middlewareMetricsInc(http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
 	mux.HandleFunc("GET /api/healthz", healthHandler)
-	mux.HandleFunc("GET /api/metrics", cfg.metricHandler)
-	mux.HandleFunc("POST /api/reset", cfg.resetHandler)
+	mux.HandleFunc("GET /admin/metrics", cfg.metricHandler)
+	mux.HandleFunc("POST /admin/reset", cfg.resetHandler)
+	mux.HandleFunc("POST /api/validate_chirp", validateHandler)
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
@@ -34,9 +38,9 @@ func healthHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func (cfg *apiConfig) metricHandler(w http.ResponseWriter, req *http.Request) {
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Add("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("Hits: %d", cfg.fileserverHits.Load())))
+	w.Write([]byte(fmt.Sprintf("<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.fileserverHits.Load())))
 }
 
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, req *http.Request) {
@@ -50,4 +54,72 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 		cfg.fileserverHits.Add(1)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func validateHandler(w http.ResponseWriter, req *http.Request) {
+	type parameters struct {
+		Body string `json:"body"`
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	if len(params.Body) >= 140 {
+		errorResponse(w, "Chirp is too long", 400)
+		return
+	}
+
+	payload := cleanBody(params.Body)
+	validResponse(w, payload, 200)
+}
+
+func errorResponse(w http.ResponseWriter, msg string, code int) {
+	type returnVals struct {
+		Error string `json:"error"`
+	}
+	respBody := returnVals{
+		Error: msg,
+	}
+	dat, err := json.Marshal(respBody)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(dat)
+}
+
+func validResponse(w http.ResponseWriter, payload interface{}, code int) {
+	type returnVals struct {
+		Cleaned_body interface{} `json:"cleaned_body"`
+	}
+	respBody := returnVals{
+		Cleaned_body: payload,
+	}
+	dat, err := json.Marshal(respBody)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	w.Write(dat)
+}
+
+func cleanBody(body string) string {
+	profanes := []string{"kerfuffle", "sharbert", "fornax"}
+	words := strings.Split(body, " ")
+	for i, word := range words {
+		lowered := strings.ToLower(word)
+		if slices.Contains(profanes, lowered) {
+			words[i] = "****"
+		}
+	}
+	return strings.Join(words, " ")
 }

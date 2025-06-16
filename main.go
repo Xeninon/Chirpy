@@ -9,8 +9,10 @@ import (
 	"slices"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/Xeninon/Chirpy/internal/database"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -37,6 +39,7 @@ func main() {
 	mux.HandleFunc("GET /admin/metrics", cfg.metricHandler)
 	mux.HandleFunc("POST /admin/reset", cfg.resetHandler)
 	mux.HandleFunc("POST /api/validate_chirp", validateHandler)
+	mux.HandleFunc("POST /api/users", cfg.usersHandler)
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
@@ -56,10 +59,20 @@ func healthHandler(w http.ResponseWriter, req *http.Request) {
 func (cfg *apiConfig) metricHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Add("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.fileserverHits.Load())))
+	w.Write(fmt.Appendf(make([]byte, 0), "<html><body><h1>Welcome, Chirpy Admin</h1><p>Chirpy has been visited %d times!</p></body></html>", cfg.fileserverHits.Load()))
 }
 
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, req *http.Request) {
+	if platfrom := os.Getenv("PLATFORM"); platfrom != "dev" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+
+	if err := cfg.db.DeleteUsers(req.Context()); err != nil {
+		errorResponse(w, "Something went wrong", 500)
+		return
+	}
+
 	cfg.fileserverHits.Store(0)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Hits reset to 0"))
@@ -81,7 +94,7 @@ func validateHandler(w http.ResponseWriter, req *http.Request) {
 	params := parameters{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		w.WriteHeader(500)
+		errorResponse(w, "Something went wrong", 500)
 		return
 	}
 
@@ -111,9 +124,9 @@ func errorResponse(w http.ResponseWriter, msg string, code int) {
 	w.Write(dat)
 }
 
-func validResponse(w http.ResponseWriter, payload interface{}, code int) {
+func validResponse(w http.ResponseWriter, payload any, code int) {
 	type returnVals struct {
-		Cleaned_body interface{} `json:"cleaned_body"`
+		Cleaned_body any `json:"cleaned_body"`
 	}
 	respBody := returnVals{
 		Cleaned_body: payload,
@@ -138,4 +151,48 @@ func cleanBody(body string) string {
 		}
 	}
 	return strings.Join(words, " ")
+}
+
+func (cfg *apiConfig) usersHandler(w http.ResponseWriter, req *http.Request) {
+	type User struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+
+	type parameters struct {
+		Email string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		errorResponse(w, "Something went wrong", 500)
+		return
+	}
+
+	user, err := cfg.db.CreateUser(req.Context(), params.Email)
+	if err != nil {
+		errorResponse(w, "Something went wrong", 500)
+		return
+	}
+
+	dat, err := json.Marshal(
+		User{
+			ID:        user.ID,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+			Email:     user.Email,
+		},
+	)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	w.Write(dat)
 }

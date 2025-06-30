@@ -38,8 +38,9 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", healthHandler)
 	mux.HandleFunc("GET /admin/metrics", cfg.metricHandler)
 	mux.HandleFunc("POST /admin/reset", cfg.resetHandler)
-	mux.HandleFunc("POST /api/validate_chirp", validateHandler)
 	mux.HandleFunc("POST /api/users", cfg.usersHandler)
+	mux.HandleFunc("POST /api/chirps", cfg.chirpsHandler)
+	mux.HandleFunc("GET /api/chirps", cfg.getChirpsHandler)
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
@@ -85,51 +86,12 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
-func validateHandler(w http.ResponseWriter, req *http.Request) {
-	type parameters struct {
-		Body string `json:"body"`
-	}
-
-	decoder := json.NewDecoder(req.Body)
-	params := parameters{}
-	err := decoder.Decode(&params)
-	if err != nil {
-		errorResponse(w, "Something went wrong", 500)
-		return
-	}
-
-	if len(params.Body) >= 140 {
-		errorResponse(w, "Chirp is too long", 400)
-		return
-	}
-
-	payload := cleanBody(params.Body)
-	validResponse(w, payload, 200)
-}
-
 func errorResponse(w http.ResponseWriter, msg string, code int) {
 	type returnVals struct {
 		Error string `json:"error"`
 	}
 	respBody := returnVals{
 		Error: msg,
-	}
-	dat, err := json.Marshal(respBody)
-	if err != nil {
-		w.WriteHeader(500)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	w.Write(dat)
-}
-
-func validResponse(w http.ResponseWriter, payload any, code int) {
-	type returnVals struct {
-		Cleaned_body any `json:"cleaned_body"`
-	}
-	respBody := returnVals{
-		Cleaned_body: payload,
 	}
 	dat, err := json.Marshal(respBody)
 	if err != nil {
@@ -194,5 +156,105 @@ func (cfg *apiConfig) usersHandler(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	w.Write(dat)
+}
+
+func (cfg *apiConfig) chirpsHandler(w http.ResponseWriter, req *http.Request) {
+	type Chirp struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
+
+	type parameters struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		errorResponse(w, "Something went wrong", 500)
+		return
+	}
+
+	if len(params.Body) >= 140 {
+		errorResponse(w, "Chirp is too long", 400)
+		return
+	}
+
+	params.Body = cleanBody(params.Body)
+	chirp, err := cfg.db.CreateChirp(
+		req.Context(),
+		database.CreateChirpParams{
+			Body:   params.Body,
+			UserID: params.UserID,
+		},
+	)
+	if err != nil {
+		errorResponse(w, "Something went wrong", 500)
+		return
+	}
+
+	dat, err := json.Marshal(
+		Chirp{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
+		},
+	)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	w.Write(dat)
+}
+
+func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, req *http.Request) {
+	type Chirp struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}
+
+	Chirps := make([]Chirp, 0)
+
+	chirps, err := cfg.db.GetChirps(req.Context())
+	if err != nil {
+		errorResponse(w, "Something went wrong", 500)
+		return
+	}
+
+	for _, chirp := range chirps {
+		Chirps = append(
+			Chirps,
+			Chirp{
+				ID:        chirp.ID,
+				CreatedAt: chirp.CreatedAt,
+				UpdatedAt: chirp.UpdatedAt,
+				Body:      chirp.Body,
+				UserID:    chirp.UserID,
+			},
+		)
+	}
+
+	dat, err := json.Marshal(Chirps)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 	w.Write(dat)
 }

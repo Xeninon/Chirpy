@@ -286,7 +286,6 @@ func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, req *http.Request) 
 
 	userID, err := uuid.Parse(req.PathValue("chirpID"))
 	if err != nil {
-		// Handle the error - invalid UUID format
 		errorResponse(w, "Invalid chirp ID", http.StatusBadRequest)
 		return
 	}

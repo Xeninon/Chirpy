@@ -23,14 +23,14 @@ func TestJWT(t *testing.T) {
 
 	_, err = ValidateJWT(tokenString, "not secret")
 	if err == nil {
-		t.Errorf("ValidateJWT function failed: %v", err)
+		t.Errorf("ValidateJWT function failed: accepted invalid secret")
 		return
 	}
 
 	time.Sleep(interval * 2)
 	_, err = ValidateJWT(tokenString, "secret")
 	if err == nil {
-		t.Errorf("ValidateJWT function failed: %v", err)
+		t.Errorf("ValidateJWT function failed: accepted expired token")
 		return
 	}
 }

@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/Xeninon/Chirpy/internal/auth"
 	"github.com/Xeninon/Chirpy/internal/database"
 	"github.com/google/uuid"
 )
@@ -19,13 +22,24 @@ func (cfg *apiConfig) chirpsHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	type parameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
+	}
+
+	token, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		errorResponse(w, "Unauthorized", 401)
+		return
+	}
+
+	userID, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		errorResponse(w, "Unauthorized", 401)
+		return
 	}
 
 	decoder := json.NewDecoder(req.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		errorResponse(w, "Something went wrong", 500)
 		return
@@ -41,7 +55,7 @@ func (cfg *apiConfig) chirpsHandler(w http.ResponseWriter, req *http.Request) {
 		req.Context(),
 		database.CreateChirpParams{
 			Body:   params.Body,
-			UserID: params.UserID,
+			UserID: userID,
 		},
 	)
 	if err != nil {
@@ -55,7 +69,7 @@ func (cfg *apiConfig) chirpsHandler(w http.ResponseWriter, req *http.Request) {
 			CreatedAt: chirp.CreatedAt,
 			UpdatedAt: chirp.UpdatedAt,
 			Body:      chirp.Body,
-			UserID:    chirp.UserID,
+			UserID:    userID,
 		},
 	)
 	if err != nil {
@@ -66,6 +80,18 @@ func (cfg *apiConfig) chirpsHandler(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	w.Write(dat)
+}
+
+func cleanBody(body string) string {
+	profanes := []string{"kerfuffle", "sharbert", "fornax"}
+	words := strings.Split(body, " ")
+	for i, word := range words {
+		lowered := strings.ToLower(word)
+		if slices.Contains(profanes, lowered) {
+			words[i] = "****"
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, req *http.Request) {

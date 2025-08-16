@@ -16,11 +16,13 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, req *http.Request) {
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email     string    `json:"email"`
+		Token     string    `json:"token"`
 	}
 
 	type parameters struct {
-		Password string `json:"password"`
-		Email    string `json:"email"`
+		Password  string `json:"password"`
+		Email     string `json:"email"`
+		ExpiresIn int    `json:"expires_in_seconds"`
 	}
 
 	decoder := json.NewDecoder(req.Body)
@@ -42,12 +44,24 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	tokenDuration := min(time.Duration(params.ExpiresIn)*time.Second, time.Hour)
+	if params.ExpiresIn == 0 {
+		tokenDuration = time.Hour
+	}
+
+	token, err := auth.MakeJWT(user.ID, cfg.secret, tokenDuration)
+	if err != nil {
+		errorResponse(w, "Something went wrong", 500)
+		return
+	}
+
 	dat, err := json.Marshal(
 		User{
 			ID:        user.ID,
 			CreatedAt: user.CreatedAt,
 			UpdatedAt: user.UpdatedAt,
 			Email:     user.Email,
+			Token:     token,
 		},
 	)
 	if err != nil {

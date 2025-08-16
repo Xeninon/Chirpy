@@ -56,7 +56,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	cfg.db.CreateRefreshToken(
+	err = cfg.db.CreateRefreshToken(
 		req.Context(),
 		database.CreateRefreshTokenParams{
 			Token:     refreshToken,
@@ -64,6 +64,10 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, req *http.Request) {
 			ExpiresAt: time.Now().Add(time.Hour * 24 * 60),
 		},
 	)
+	if err != nil {
+		errorResponse(w, "Something went wrong", 500)
+		return
+	}
 
 	dat, err := json.Marshal(
 		User{
@@ -139,5 +143,80 @@ func (cfg *apiConfig) usersHandler(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
+	w.Write(dat)
+}
+
+func (cfg *apiConfig) UpdateUserHandler(w http.ResponseWriter, req *http.Request) {
+	type User struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}
+
+	type parameters struct {
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	if params.Email == "" || params.Password == "" {
+		w.WriteHeader(400)
+		return
+	}
+
+	token, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	hash, err := auth.HashPassword(params.Password)
+	if err != nil {
+		errorResponse(w, "Something went wrong", 500)
+		return
+	}
+
+	user, err := cfg.db.UpdateUserInfo(
+		req.Context(),
+		database.UpdateUserInfoParams{
+			Email:          params.Email,
+			HashedPassword: hash,
+			ID:             userID,
+		},
+	)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	dat, err := json.Marshal(
+		User{
+			ID:        user.ID,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+			Email:     user.Email,
+		},
+	)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	w.Write(dat)
 }

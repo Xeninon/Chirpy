@@ -2,14 +2,11 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"sync/atomic"
-	"time"
 
-	"github.com/Xeninon/Chirpy/internal/auth"
 	"github.com/Xeninon/Chirpy/internal/database"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -46,6 +43,7 @@ func main() {
 	mux.HandleFunc("POST /api/login", cfg.loginHandler)
 	mux.HandleFunc("POST /api/refresh", cfg.refreshHandler)
 	mux.HandleFunc("POST /api/revoke", cfg.revokeHandler)
+	mux.HandleFunc("PUT /api/users", cfg.UpdateUserHandler)
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: mux,
@@ -89,74 +87,4 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 		cfg.fileserverHits.Add(1)
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, req *http.Request) {
-	type Response struct {
-		Token string `json:"token"`
-	}
-
-	token, err := auth.GetBearerToken(req.Header)
-	if err != nil {
-		print(1)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	user, err := cfg.db.GetUserFromRefreshToken(
-		req.Context(),
-		token,
-	)
-	if err != nil {
-		print(2)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	if user.ExpiresAt.Before(time.Now()) {
-		print(3)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	if user.RevokedAt.Valid {
-		print(4)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	accessToken, err := auth.MakeJWT(user.UserID, cfg.secret, time.Hour)
-	if err != nil {
-		w.WriteHeader(500)
-		return
-	}
-
-	dat, err := json.Marshal(
-		Response{
-			Token: accessToken,
-		},
-	)
-	if err != nil {
-		w.WriteHeader(500)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(dat)
-}
-
-func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, req *http.Request) {
-	token, err := auth.GetBearerToken(req.Header)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	err = cfg.db.RevokeRefreshToken(req.Context(), token)
-	if err != nil {
-		w.WriteHeader(500)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }

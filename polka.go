@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Xeninon/Chirpy/internal/auth"
 	"github.com/google/uuid"
 )
 
@@ -15,9 +16,20 @@ type PolkaRequest struct {
 }
 
 func (cfg *apiConfig) polkaHandler(w http.ResponseWriter, req *http.Request) {
+	polkaKey, err := auth.GetAPIKey(req.Header)
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+
+	if polkaKey != cfg.polkaKey {
+		w.WriteHeader(401)
+		return
+	}
+
 	decoder := json.NewDecoder(req.Body)
 	params := PolkaRequest{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		w.WriteHeader(500)
 		return

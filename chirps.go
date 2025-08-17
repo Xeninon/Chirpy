@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -104,24 +105,35 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, req *http.Request)
 	}
 
 	Chirps := make([]Chirp, 0)
+	authorID := req.URL.Query().Get("author_id")
+	sorting := req.URL.Query().Get("sort")
+	parsedID, _ := uuid.Parse(authorID)
 
 	chirps, err := cfg.db.GetChirps(req.Context())
 	if err != nil {
-		errorResponse(w, "Something went wrong", 500)
+		w.WriteHeader(500)
 		return
 	}
 
+	if sorting == "desc" {
+		sort.Slice(chirps, func(i, j int) bool { return chirps[i].CreatedAt.After(chirps[j].CreatedAt) })
+	} else if sorting == "asc" || sorting == "" {
+		sort.Slice(chirps, func(i, j int) bool { return chirps[i].CreatedAt.Before(chirps[j].CreatedAt) })
+	}
+
 	for _, chirp := range chirps {
-		Chirps = append(
-			Chirps,
-			Chirp{
-				ID:        chirp.ID,
-				CreatedAt: chirp.CreatedAt,
-				UpdatedAt: chirp.UpdatedAt,
-				Body:      chirp.Body,
-				UserID:    chirp.UserID,
-			},
-		)
+		if chirp.UserID == parsedID || authorID == "" {
+			Chirps = append(
+				Chirps,
+				Chirp{
+					ID:        chirp.ID,
+					CreatedAt: chirp.CreatedAt,
+					UpdatedAt: chirp.UpdatedAt,
+					Body:      chirp.Body,
+					UserID:    chirp.UserID,
+				},
+			)
+		}
 	}
 
 	dat, err := json.Marshal(Chirps)

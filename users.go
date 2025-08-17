@@ -18,6 +18,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, req *http.Request) {
 		Email        string    `json:"email"`
 		Token        string    `json:"token"`
 		RefreshToken string    `json:"refresh_token"`
+		IsChirpyRed  bool      `json:"is_chirpy_red"`
 	}
 
 	type parameters struct {
@@ -77,6 +78,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, req *http.Request) {
 			Email:        user.Email,
 			Token:        token,
 			RefreshToken: refreshToken,
+			IsChirpyRed:  user.IsChirpyRed,
 		},
 	)
 	if err != nil {
@@ -91,10 +93,11 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, req *http.Request) {
 
 func (cfg *apiConfig) usersHandler(w http.ResponseWriter, req *http.Request) {
 	type User struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
+		ID          uuid.UUID `json:"id"`
+		CreatedAt   time.Time `json:"created_at"`
+		UpdatedAt   time.Time `json:"updated_at"`
+		Email       string    `json:"email"`
+		IsChirpyRed bool      `json:"is_chirpy_red"`
 	}
 
 	type parameters struct {
@@ -130,10 +133,11 @@ func (cfg *apiConfig) usersHandler(w http.ResponseWriter, req *http.Request) {
 
 	dat, err := json.Marshal(
 		User{
-			ID:        user.ID,
-			CreatedAt: user.CreatedAt,
-			UpdatedAt: user.UpdatedAt,
-			Email:     user.Email,
+			ID:          user.ID,
+			CreatedAt:   user.CreatedAt,
+			UpdatedAt:   user.UpdatedAt,
+			Email:       user.Email,
+			IsChirpyRed: user.IsChirpyRed,
 		},
 	)
 	if err != nil {
@@ -146,12 +150,13 @@ func (cfg *apiConfig) usersHandler(w http.ResponseWriter, req *http.Request) {
 	w.Write(dat)
 }
 
-func (cfg *apiConfig) UpdateUserHandler(w http.ResponseWriter, req *http.Request) {
+func (cfg *apiConfig) updateUserHandler(w http.ResponseWriter, req *http.Request) {
 	type User struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
+		ID          uuid.UUID `json:"id"`
+		CreatedAt   time.Time `json:"created_at"`
+		UpdatedAt   time.Time `json:"updated_at"`
+		Email       string    `json:"email"`
+		IsChirpyRed bool      `json:"is_chirpy_red"`
 	}
 
 	type parameters struct {
@@ -205,10 +210,11 @@ func (cfg *apiConfig) UpdateUserHandler(w http.ResponseWriter, req *http.Request
 
 	dat, err := json.Marshal(
 		User{
-			ID:        user.ID,
-			CreatedAt: user.CreatedAt,
-			UpdatedAt: user.UpdatedAt,
-			Email:     user.Email,
+			ID:          user.ID,
+			CreatedAt:   user.CreatedAt,
+			UpdatedAt:   user.UpdatedAt,
+			Email:       user.Email,
+			IsChirpyRed: user.IsChirpyRed,
 		},
 	)
 	if err != nil {

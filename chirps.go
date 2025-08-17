@@ -144,13 +144,13 @@ func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, req *http.Request) 
 		UserID    uuid.UUID `json:"user_id"`
 	}
 
-	userID, err := uuid.Parse(req.PathValue("chirpID"))
+	chirpID, err := uuid.Parse(req.PathValue("chirpID"))
 	if err != nil {
 		errorResponse(w, "Invalid chirp ID", http.StatusBadRequest)
 		return
 	}
 
-	chirp, err := cfg.db.GetChirp(req.Context(), userID)
+	chirp, err := cfg.db.GetChirp(req.Context(), chirpID)
 	if err != nil {
 		errorResponse(w, "Content not found", http.StatusNotFound)
 		return
@@ -173,4 +173,43 @@ func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, req *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 	w.Write(dat)
+}
+
+func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, req *http.Request) {
+	token, err := auth.GetBearerToken(req.Header)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	chirpID, err := uuid.Parse(req.PathValue("chirpID"))
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	chirp, err := cfg.db.GetChirp(req.Context(), chirpID)
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+
+	if chirp.UserID != userID {
+		w.WriteHeader(403)
+		return
+	}
+
+	err = cfg.db.DeleteChirp(req.Context(), chirpID)
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+
+	w.WriteHeader(204)
 }
